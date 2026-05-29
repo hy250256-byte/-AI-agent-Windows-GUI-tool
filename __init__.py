@@ -1,1 +1,1 @@
-"""autotrans-plugin — 圣瑞思吊挂系统自动化操作插件"""
+"""autotrans-plugin — 吊挂系统自动化操作tool"""
