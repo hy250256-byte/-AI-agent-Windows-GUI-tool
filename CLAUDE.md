@@ -75,3 +75,4 @@ C:/Python311-32/python.exe -m pytest tests/test_click.py::TestClick::test_click_
 - **stdout 是唯一输出** — `{"ok": true}` 或 `{"ok": false, "error": "..."}`
 - **失败即抛异常** — CLI 入口 catch 后输出 JSON 错误，不内部重试
 - **不使用 `child_window`** — DevExpress NavBarControl 虚影子项导致多匹配报错，统一用 `find_elements` + 取第一个
+- **`find_elements` 必须指定 `parent`** — 不带 `parent` 的 `find_elements` 会从桌面根节点遍历整个 UIA 树，控件树太复杂，返回数据量太大，性能极差。始终传入 `parent=_main_win` 限定搜索范围

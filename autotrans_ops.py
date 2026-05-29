@@ -12,6 +12,7 @@
 
 import sys
 import json
+import traceback
 
 from pywinauto import Application
 from pywinauto.backend import registry
@@ -66,19 +67,21 @@ MAPPING = {
 
     "制单号输入":     {"parent": "bar1", "control_type": "Edit", "index": 0},
     "客户名称字段":   {"name": "客户名称",       "control_type": "Pane"},
+    "客户名称输入框": {"automation_id": "textBoxEx9", "control_type": "Edit"},
+    "制单明细":       {"automation_id": "tabControlPanel3", "control_type": "Pane"},
 
-    "输入制单号弹窗": {"automation_id": "FormInput", "control_type": "Window"},
-    "新制单号输入框": {"dialog": "FormInput", "control_type": "Edit", "index": 0},
-    "另存为-确定":     {"dialog": "FormInput", "name": "确定(O)",     "control_type": "Button"},
-    "另存为-取消":     {"dialog": "FormInput", "name": "取消(C)",     "control_type": "Button"},
+    "输入制单号弹窗": {"name": "输入制单号", "control_type": "Window"},
+    "新制单号输入框": {"parent": "输入制单号弹窗", "automation_id": "textBoxX1", "control_type": "Edit"},
+    "输入制单号-确定": {"parent": "输入制单号弹窗", "name": "确定(O)",     "control_type": "Button"},
+    "输入制单号-取消": {"parent": "输入制单号弹窗", "name": "取消(C)",     "control_type": "Button"},
 
     "制单选择弹窗":   {"automation_id": "FormZdList", "control_type": "Window"},
-    "制单号搜索框":   {"dialog": "FormZdList", "automation_id": "textGridview1", "control_type": "Edit"},
-    "选择加工方案":   {"dialog": "FormZdList", "automation_id": "comboBoxEx1",   "control_type": "ComboBox"},
-    "选择流水线":     {"dialog": "FormZdList", "automation_id": "comboBoxEx3",   "control_type": "ComboBox"},
-    "制单选择-查询":  {"dialog": "FormZdList", "name": "查询",    "control_type": "Button"},
-    "制单选择-确定":  {"dialog": "FormZdList", "name": "确定(O)", "control_type": "Button"},
-    "制单选择-取消":  {"dialog": "FormZdList", "name": "取消(C)", "control_type": "Button"},
+    "制单号搜索框":   {"parent": "制单选择弹窗", "automation_id": "textGridview1", "control_type": "Edit"},
+    "选择加工方案":   {"parent": "制单选择弹窗", "automation_id": "comboBoxEx1",   "control_type": "ComboBox"},
+    "选择流水线":     {"parent": "制单选择弹窗", "automation_id": "comboBoxEx3",   "control_type": "ComboBox"},
+    "制单选择-查询":  {"parent": "制单选择弹窗", "name": "查询",    "control_type": "Button"},
+    "制单选择-确定":  {"parent": "制单选择弹窗", "name": "确定(O)", "control_type": "Button"},
+    "制单选择-取消":  {"parent": "制单选择弹窗", "name": "取消(C)", "control_type": "Button"},
 }
 
 _app = None
@@ -107,7 +110,15 @@ def _locate(target: str):
     1. 递归点击所有前置依赖
     2. 弹窗内控件先定位弹窗
     3. child_window() 精确匹配，不遍历控件树
+    4. target 不在映射表且处于 grid 上下文时，按 name 搜索
     """
+    if target not in MAPPING:
+        _ensure_connected()
+        elements = find_elements(title=target, top_level_only=False, backend="uia")
+        if not elements:
+            raise RuntimeError(f"找不到控件: {target}")
+        return _uia_wrapper(elements[0])
+
     entry = MAPPING[target]
 
     for pre in entry.get("prerequisites", []):
@@ -115,10 +126,6 @@ def _locate(target: str):
 
     _ensure_connected()
     search = _main_win
-
-    if "dialog" in entry:
-        search = _app.window(auto_id=entry["dialog"])
-        search.wait("visible", timeout=10)
 
     if "parent" in entry:
         search = _locate(entry["parent"])
@@ -148,9 +155,34 @@ def _locate(target: str):
     return _uia_wrapper(elements[0])
 
 
+def _check_error_dialog(timeout=1.0):
+    """检测"提示"错误弹窗。有则读文本 → 关弹窗 → 返回错误信息，无则返回 None。"""
+    import time
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        elements = find_elements(title="提示", control_type="Window", top_level_only=False, backend="uia")
+        if elements:
+            dlg = _uia_wrapper(elements[0])
+            msg = ""
+            for child in dlg.children():
+                if child.element_info.control_type == "Text":
+                    msg = child.element_info.name
+                    break
+            for child in dlg.children():
+                if child.element_info.name == "确定":
+                    child.click_input()
+                    break
+            return msg
+        time.sleep(0.1)
+    return None
+
+
 def click(target: str):
     """点击指定控件"""
     _locate(target).click_input()
+    msg = _check_error_dialog()
+    if msg:
+        raise RuntimeError(msg)
 
 
 def input_text(target: str, value: str):
@@ -189,5 +221,10 @@ if __name__ == "__main__":
             sys.exit(1)
 
     except Exception as e:
-        print(json.dumps({"ok": False, "error": str(e)}))
+        print(json.dumps({
+            "ok": False,
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "traceback": traceback.format_exc(),
+        }))
         sys.exit(1)

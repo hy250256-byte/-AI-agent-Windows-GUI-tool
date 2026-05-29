@@ -66,7 +66,7 @@ class TestClick:
         click._app.window.return_value = mock_dia
         mock_dia.child_window.return_value = mock_ctrl
 
-        click.click("另存为-确定")
+        click.click("输入制单号-确定")
 
         click._app.window.assert_called_with(auto_id="FormInput")
         mock_dia.child_window.assert_called_with(
